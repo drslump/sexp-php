@@ -13,22 +13,22 @@ class Sexp
 {
     // Disable if you want to manage numbers yourself (ie: Big numbers)
     protected $castNumbers = true;
-    
+
     // Set to false to disable pretty printing when serializing
     protected $pretty = true;
-    
+
     // This regexp is used to tokenize the s-expression
     protected $regexp = '
-        /   \(                      
-        |   \)                      
+        /   \(
+        |   \)
         |   \"(\\\\.|[^\\\\\"]+)*\" # double quoted string
         |   \'(\\\\.|[^\\\\\']+)*\' # single quoted string
         |   \|[A-Za-z0-9\+\/\=]*\|  # base64
-        |   \#[A-Fa-f0-9\s]+\#      # hexadecimal  
+        |   \#[A-Fa-f0-9\s]+\#      # hexadecimal
         |   ;[^\r\n]*               # comments
         |   [^\s\(\)\"\'\|\#\;]+    # anything else is a symbol
         /x';
-    
+
     /**
      * Check if pretty printing is enabled
      *
@@ -38,7 +38,7 @@ class Sexp
     {
         return (bool)$this->pretty;
     }
-    
+
     /**
      * Set pretty printing flag
      *
@@ -48,7 +48,7 @@ class Sexp
     {
         $this->pretty = (bool)$flag;
     }
-    
+
     /**
      * Check if automatic casting of numbers is enabled
      *
@@ -58,7 +58,7 @@ class Sexp
     {
         return (bool)$this->castNumbers;
     }
-    
+
     /**
      * Set automatic casting of numbers flag
      *
@@ -68,25 +68,25 @@ class Sexp
     {
         $this->castNumbers = (bool)$flag;
     }
-    
-	/**
-	 * Parse an s-expression string
-	 * 
-	 * @throws \RuntimeException - If s-expression is malformed
-	 * @param string $data
-	 * @return array
-	 */
+
+    /**
+     * Parse an s-expression string
+     *
+     * @throws \RuntimeException - If s-expression is malformed
+     * @param string $data
+     * @return array
+     */
     public function parse($data)
     {
         $stack = array();
         $list = array();
-        
+
         $ofs = 0;
         while (preg_match($this->regexp, $data, $m, PREG_OFFSET_CAPTURE, $ofs)) {
             // Not interested in paren captures
             $m = $m[0];
-            
-            $token = $m[0];         
+
+            $token = $m[0];
             switch (substr($token, 0, 1)) {
             case '(':
                 $stack[] = $list;
@@ -95,7 +95,7 @@ class Sexp
             case ')':
                 $prev = array_pop($stack);
                 $prev[] = $list;
-                $list = $prev;          
+                $list = $prev;
             break;
             case "'":
             case '"':
@@ -124,18 +124,18 @@ class Sexp
                 } else if ($this->isFloat($token)) {
                     $token = floatval($token);
                 }
-                
+
                 $list[] = $token;
             }
-        
+
             // Go to next token
-            $ofs = $m[1] + strlen($m[0]);                       
+            $ofs = $m[1] + strlen($m[0]);
         }
-        
+
         if (count($stack) > 0 || count($list) !== 1) {
             throw new \RuntimeException('Malformed expression. Opening and closing parens do not match.');
         }
-        
+
         return $list[0];
     }
 
@@ -148,10 +148,10 @@ class Sexp
     protected function isInteger($value)
     {
         if (!$this->castNumbers) return false;
-        
+
         return preg_match('/^[+-]?[0-9]+(e[+-]?[0-9]+)?$/i', $value);
     }
-    
+
     /**
      * Check if a literal seems to be a float number
      *
@@ -161,29 +161,29 @@ class Sexp
     protected function isFloat($value)
     {
         if (!$this->castNumbers) return false;
-        
+
         return preg_match('/^[+-]?([0-9]+\.|\.)?[0-9]+(e[+-]?[0-9]+)?$/i', $value);
     }
 
-	/**
-	 * Serialize an in memory structure to an s-expression string
-	 * 
-	 * @throws \RuntimeException - If s-expression is malformed
-	 * @param string $data
-	 * @return array
-	 */    
+    /**
+     * Serialize an in memory structure to an s-expression string
+     * 
+     * @throws \RuntimeException - If s-expression is malformed
+     * @param string $data
+     * @return array
+     */    
     public function serialize($array, $indent = 0)
     {
-        $out = array();     
-        
+        $out = array();
+
         // Single literals are converted to arrays to simplify the code
         if (!is_array($array)) {
             $array = array($array);
         }
-        
+
         foreach ($array as $item) {
             if (is_array($item)) {
-                $out[] = $this->serialize($item, $indent+1); 
+                $out[] = $this->serialize($item, $indent+1);
             } else if (is_int($item)) {
                 $out[] = $item;
             } else if (is_float($item)) {
@@ -191,28 +191,28 @@ class Sexp
             } else if (is_bool($item)) {
                 $out[] = $item ? 1 : 0;
             } else if (is_null($item)) {
-                $out[] = '""';          
+                $out[] = '""';
             } else if (is_string($item)) {
                 $out[] = $this->serializeString($item);
             } else if (is_object($item)) {
-	            if ($item instanceof Traversable) {
-		            $out[] = $this->serialize($item, $indent+1);
-	            } else {
+                if ($item instanceof Traversable) {
+                    $out[] = $this->serialize($item, $indent+1);
+                } else {
                     $out[] = $this->serializeString((string)$item);
                 }
             } else {
                 throw new \RuntimeException('Unable to serialize value of type ' . gettype($item));
             }
         }
-        
+
         $out = '(' . implode(' ', $out) . ')';
         if ($this->pretty && $indent > 0) {
             $out = "\n" . str_repeat('  ', $indent) . $out;
         }
-        
+
         return $out;
-    }   	
-    
+    }
+
     /**
      * Serialize a string value, quoting it if necessary
      *
@@ -225,13 +225,13 @@ class Sexp
         if (preg_match('/[^\x20-\x7e\s]/', $value)) {
             return '|' . base64_encode($value) . '|';
         }
-                
+
         // Check for non-symbol characters
         if (preg_match('/[^A-Za-z0-9_\.\:\/\*\+\-\=]/', $value)) {
             return '"' . addcslashes($value, '\\"') . '"';
         }
-        
+
         return $value;
-    }   
+    }
 }
 
