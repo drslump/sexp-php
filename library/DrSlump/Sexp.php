@@ -21,6 +21,7 @@ class Sexp
     protected $regexp = '
         /   \(
         |   \)
+        |   \`                      # quote markup
         |   \"(\\\\.|[^\\\\\"]+)*\" # double quoted string
         |   \'(\\\\.|[^\\\\\']+)*\' # single quoted string
         |   \|[A-Za-z0-9\+\/\=]*\|  # base64
@@ -80,6 +81,7 @@ class Sexp
     {
         $stack = array();
         $list = array();
+        $quoted = array();
 
         $ofs = 0;
         while (preg_match($this->regexp, $data, $m, PREG_OFFSET_CAPTURE, $ofs)) {
@@ -87,26 +89,46 @@ class Sexp
             $m = $m[0];
 
             $token = $m[0];
+            $post_flag = false;
             switch (substr($token, 0, 1)) {
             case '(':
                 $stack[] = $list;
                 $list = array();
+                if (count($quoted) > 0) {
+                   $quoted[] = '(';
+                }
             break;
             case ')':
                 $prev = array_pop($stack);
                 $prev[] = $list;
                 $list = $prev;
+                if (count($quoted) > 0) {
+                   $prev_q = array_pop($quoted);
+                   if ($prev_q === '`') {
+                      $prev = array_pop($stack);
+                      $prev[] = $list;
+                      $list = $prev;
+                   }
+                }
+            break;
+            case "`":
+                $stack[] = $list;
+                $list = array();
+                $list[] = 'quote';
+                $quoted[] = '`';
             break;
             case "'":
             case '"':
                 $str = substr($token, 1, -1);
                 $str = stripcslashes($str);
                 $list[] = $str;
+                $post_flag = true;
             break;
             case '|': // Base64
                 $str = substr($token, 1, -1);
                 $str = base64_decode($str);
                 $list[] = $str;
+                $post_flag = true;
             break;
             case '#': // Hexadecimal
                 $str = substr($token, 1, -1);
@@ -114,9 +136,11 @@ class Sexp
                 $str = preg_replace('/[^A-Fa-f0-9]+/', '', $str);
                 $str = pack('H*', $str);
                 $list[] = $str;
+                $post_flag = true;
             break;
             case ';':
                 // Just ignore comments
+                $post_flag = true;
             break;
             default:
                 if ($this->isInteger($token)) {
@@ -126,6 +150,21 @@ class Sexp
                 }
 
                 $list[] = $token;
+                $post_flag = true;
+            }
+
+            // post-processing
+            if ($post_flag) {
+               if (count($quoted) > 0) {
+                  if ('`' === $quoted[count($quoted)-1]) {
+                     $prev_q = array_pop($quoted);
+                     if ($prev_q === '`') {
+                         $prev = array_pop($stack);
+                         $prev[] = $list;
+                         $list = $prev;
+                     }
+                  }
+               }
             }
 
             // Go to next token
@@ -144,7 +183,7 @@ class Sexp
      *
      * @param string $value
      * @return bool
-     */    
+     */
     protected function isInteger($value)
     {
         if (!$this->castNumbers) return false;
@@ -167,11 +206,11 @@ class Sexp
 
     /**
      * Serialize an in memory structure to an s-expression string
-     * 
+     *
      * @throws \RuntimeException - If s-expression is malformed
      * @param string $data
      * @return array
-     */    
+     */
     public function serialize($array, $indent = 0)
     {
         $out = array();
